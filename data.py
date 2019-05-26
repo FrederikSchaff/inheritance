@@ -4,10 +4,11 @@
 import pandas as pd
 import numpy as np
 import os
+dir_path =os.getcwd() #get dir of file, if __file__ makes problems
 
-DATA_DIR = 'data'
+DATA_DIR = dir_path + '\\' + 'data'
 
-INPUT_DIR = 'raw_data'
+INPUT_DIR = dir_path + '\\' + 'raw_data'
 
 def save_tensor(name, description, tensor, dims, data_dir):
     """Save tensor and metadata to a numpy file."""
@@ -62,19 +63,20 @@ def fertility_rate():
 def f_married(year=2015):
     """Return married fraction (age X sex)."""
     path = os.path.join(INPUT_DIR, 'ONS/2015releasetablesewonlyinccidatav1.0.xls')
-    age_key = np.zeros(100, dtype='S10')
+    #age_key = np.zeros(100, dtype='S10') #zero terminated bytes aka c string
+    age_key = np.zeros(100, dtype='U10') #python 3 unicde
     age_key[:16] = '0-15'
     age_key[16:20] = '16-19'
     for start in range(20, 85, 5):
         age_key[start:start+5] = '{}-{}'.format(start, start+4)
     age_key[85:] = '85+'
-    result = []
+    result = []    
     for header in (91, 179): # Males, Females
         data = pd.read_excel(path, 'Table 1 Marital Status', header=header, index_col=[0, 1])[:85]
         data = data[year]
         data = data.replace(['u', 'z', '.'], 0.0)
         n_dict = {status: data.loc[[(status, k) for k in age_key]] for status in
-                  ('Single', 'Married', 'Civil Partnered', 'Divorced', 'Widowed')}
+                                    ('Single', 'Married', 'Civil Partnered', 'Divorced', 'Widowed')}
         married = n_dict['Married'].values + n_dict['Civil Partnered'].values
         unmarried = n_dict['Single'].values + n_dict['Divorced'].values + n_dict['Widowed'].values
         frac = (married / (married + unmarried))
@@ -83,8 +85,9 @@ def f_married(year=2015):
 
 def f_cohabiting(year=2015):
     """Return cohabiting fraction (age X sex)."""
+    #year=2015 #local testing
     path = os.path.join(INPUT_DIR, 'ONS/2015releasetablesewonlyinccidatav1.0.xls')
-    age_key = np.zeros(100, dtype='S10')
+    age_key = np.zeros(100, dtype='U10') #adjust for python 3
     age_key[:16] = '0-15'
     age_key[16:30] = '16-29'
     for start in range(30, 70, 5):
@@ -137,9 +140,14 @@ def coupling_rate():
 def divorce_rate():
     """Return array of divorce rate as function of marriage year and duration."""
     path = os.path.join(INPUT_DIR, 'ONS/ageatmarriagedurationofmarriageandcohortanalysestcm77424213.xls')
-    cumulative = pd.read_excel(path, 'Table 2', header=6)
+    cumulative = pd.read_excel(path, 'Table 2', header=6) #adjusted header
     cumulative.index = [int(i[:4]) if isinstance(i, str) else i for i in cumulative.index.get_level_values(0)]
-    cumulative = cumulative.loc[1963:2012]
+    cumulative.rename( columns={cumulative.columns[0] : "Year"}, inplace=True)
+    cumulative.rename( columns={cumulative.columns[1] : "total"}, inplace=True)
+    cumulative[2:].replace('2012p',2012,inplace=True) #rename 2012*     
+    cumulative = cumulative[ (cumulative['Year']>=1963) & (cumulative['Year']<=2012)] #reduce to years 1963-2012
+    cumulative.drop('total',axis=1,inplace=True) #drop info on totals
+    cumulative.drop('Year',axis=1,inplace=True) #drop info on totals
     # For future predictions, assume divorce rate at anniversary X is the same
     # as for the most recent cohort to have data for that anniversary
     rate = cumulative.T.diff().T.fillna(method='pad')
@@ -166,9 +174,22 @@ def n_children():
     path = os.path.join(INPUT_DIR, 'ONS/cohortfertility2014v2_tcm77-422295.xls')
     data = pd.read_excel(path, 'Table 3', header=7)
     data = data[np.isfinite(data.index.get_level_values(0))]
+
+    data.rename(columns={data.columns[0] :'BirthMother', data.columns[1] :'Year1Child'}, inplace=True)   
+    data = data[0:87]#discard the meta info at end
+    filter = data[1].notnull()
+    data = data[filter]    #discard rows where all is na
+    data = data.replace('45 3', 45).fillna(method='pad')    
+    data.reindex()
+    index = data.T.loc[['BirthMother','Year1Child']].T
+    
+    
+        
     # Fill in blank "age" values
-    index = pd.DataFrame(list(zip(*data.index.values))).T
-    index = index.replace('45 3', 45).fillna(method='pad')
+    #index = pd.DataFrame(list(zip(*data.index.values))).T    
+    #index = index.replace('45 3', 45).fillna(method='pad')  
+    
+    
     index = pd.MultiIndex.from_tuples([tuple(x) for x in index.values])
     year_idx = index.get_level_values(0)
     age_idx = index.get_level_values(1)
@@ -216,29 +237,41 @@ def gini_data():
     data = pd.read_excel(path, 'Background figures', header=2, usecols=[3, 4])
     data = data[np.isfinite(data.values)]
     data /= 100.0
-    return data['Cumulative % wealth'], (data['Cumulative % households'], )
+    #return data['Cumulative % wealth'], (data['Cumulative % households'], )
+    return data.iloc[0], (data.iloc[1], )
 
 def mean_wealth():
     """Return mean wealth of UK households."""
     path = os.path.join(INPUT_DIR, 'ONS/table9_tcm77-271482.xls')
-    wealth = pd.read_excel(path, 'Table 9', header=5, usecols=[1, 5, 6, 7], skip_footer=5)
-    mean = (0.01 * wealth['Percentage'] * wealth[u'Mean £']).sum()
+    wealth = pd.read_excel(path, 'Table 9', header=5, usecols=[1, 5, 6, 7], skip_footer=5)    
+
+    wealth.rename(columns={wealth.columns[1] :'Percentage', wealth.columns[2] :U'Mean £'}, inplace=True) 
+
+    mean = (0.01 * wealth['Percentage'] * wealth[u'Mean £']).sum()  
     return np.array([mean]), (np.array([0.0]), )
 
 def median_income_by_age_sex():
     """Return median income as function of age and sex."""
-    path = os.path.join(INPUT_DIR, 'ONS/Table_3_2_14.xlsx')
+    path = os.path.join(INPUT_DIR, 'ONS/Table_3_2_14.xlsx')    
     income = []
     for header in (35, 61): # Male, Female
         data = pd.read_excel(path, '3.2', header=header)[4:17]
         data = data['Median income                  before tax']
         income.append(data.values)
-    age = np.array([
-        20.0 if a == 'Under 20' else
-        75.0 if a == '75 and over' else
-        0.5 * (float(a[:2]) + float(a[-2:]) + 1)
-        for a in data.index.get_level_values(0)
-    ])
+#    age = np.array([
+#        20.0 if a == 'Under 20' else
+#        75.0 if a == '75 and over' else
+#        0.5 * (float(a[:2]) + float(a[-2:]) + 1)
+#        for a in data.index.get_level_values(0)
+#    ])        
+    data = pd.read_excel(path, '3.2')#.iloc[13:26]  
+    #temp = [data.index(a) for a in data.index.get_level_values(0)]
+    age = [20.0]
+    age += [a*5.0 + 22 for a in range(0,11)]
+    age += [75]
+    age = np.asarray(age).astype(float)
+    
+
     return np.array(income).astype(float).T, (age, ('male', 'female'))
 
 def relative_income_by_education():

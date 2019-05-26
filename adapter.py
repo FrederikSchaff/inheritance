@@ -92,8 +92,9 @@ class SimulatorAdapter(object):
         self.model_parameters = [(p['name'], p['value']) for p in config['model_parameters']]
         self.control_parameters = config['control_parameters']
         if 'seed' not in self.control_parameters:
-            self.control_parameters['seed'] = np.random.randint(2**32-1)
+            self.control_parameters['seed'] = np.random.randint(2**32-1,dtype='int64')
         self.output_filename = 'output.h5'
+        
 
 
     def run(self):
@@ -137,6 +138,13 @@ class SimulatorAdapter(object):
         sink.flush()
         store.flush()
 
+    def run_interactive():
+        dir_path = os.getcwd() #get dir of file, if __file__ makes problems
+        cfg_path = os.path.join(dir_path,"model.yaml")
+        config = yaml.load(open(cfg_path, 'r'), Loader=yaml.FullLoader)
+
+        sim = SimulatorAdapter(config)
+        sim.run()
 
 if __name__ == '__main__':
 
